@@ -34,12 +34,16 @@ FOP_MUL: .word 0
 
 .global _start
 _start:
-    ;convert to float
     ;BL is branch with link, meaing branch and store the next instruction in link register lr
     ;at the beginning of a subroutine, store lr into a register for later use,
     ;at the end of the subroutine, put lr back into pc to go to the next instruction
     ;(see _FOPS as an example it doesn't do anything though)
+    
+    ;convert to float
     BL _DUMB_TO_IEEE
+
+    ;at this point, the two inputs will be stored in s0 ad s1 registers for usage. 
+    ;make sure those registers don't change!
 
     ;addition
     BL _ADD
