@@ -1,4 +1,3 @@
-@code for the add and substract subroutines/part of code
 ;file for integrating all code
 ;Rommel, Sam, Nat, Krunal
 
@@ -14,7 +13,7 @@ INPUT2: .word 0x80251F7C
 ;results
 INPUT1_FLOAT: .word 0   ;result of conversion to float for input 1
 INPUT2_FLOAT: .word 0   ;result of conversion to float for input 2
-ADDRESULT:  .word 0     ;result from addition algorithm
+ADD_RESULT:  .word 0     ;result from addition algorithm
 SUB_RESULT:  .word 0    ;result from subtraction algorithm
 MUL_RESULT:  .word 0    ;result from multiplication algorithm
 FOP_ADD: .word 0        ;result from built in addition instruction
@@ -187,10 +186,11 @@ _start:
         MOV PC, LR
 
     _ADD:
+    
  
     ;addition subroutine code goes here
     ;store lr and used registers (r4-r6) on stack
-        SUB SP, SP, #36
+        SUB SP, SP, #44
         STR lr, [SP,#32]
         STR r11, [SP,#28]
         STR r10, [SP,#24]
@@ -208,27 +208,10 @@ _start:
         
         LDR r4, =INPUT1_FLOAT
         LDR r4, [r4]		;r4 = input 1 in ieee754
-        LDR r6, =GET_SIGN	;r6 pointer to 100..
-        LDR r5, [r6]		;r5 = 100..
-        LDR r6, [r6]		;r6 = 100..
-        AND r5, r4, r5		;r5 has either 100... or 000...
-     
-        CMP r5, r6		;if neg 
-        BEQ P1_negate		;goto p1_negate
-        B P1_Skip			;else skip negating p1
-P1_negate: 
-        MOV r7,#-1			
-        MUL r5, r4, r7
-        mov r4,r5				;;We keep input 1 float in r4
-        ;B P1_negate_Back  	
-P1_Skip:
+        
 		LDR r5, =INPUT2_FLOAT
         LDR r5, [r5]		;r5 = input 2 in ieee754
-		;check if p2 is neg
-		; if it is go p2_negate 
-		;else branch to p2_skip
-		;r5 is going to have p2
-
+		
 		LDR r7, =GET_EXPONENT  	;used to get exponent 
         LDR r7, [r7]		
 		
@@ -240,23 +223,152 @@ P1_Skip:
 		AND r8, r10, r4    ;r8 has p1 mantissa
 		AND r9, r10, r5	   ;r9 has p2 mantissa
 	
+	;add leading one to mantissa for r8 and r9
+	
+		
+		mov r12, #0x00800000
+		ORR r8, r8, r12 
+		ORR r9, r9, r12
+	
+	
+	;if exponents are different
+	
 		CMP	r6,r7
-		BLT	P2_Fix_Exp
-		BGT P1_Fix_Exp
+		BGT	P2_Fix_Exp
+		BLT P1_Fix_Exp
 		B	EQ_No_Fix_Needed
 		
 P1_Fix_Exp:
 			;P2 > P1
-			MOV r8, r8, LSR #1
-			MOV r11, #0x800000
-			ADD r6, r6, r8
-			CMP r6,r7
-			BGT P1_Fix_Exp
+			MOV r8, r8, LSL #1	; shift p1 mantissa
+			MOV r11, #0x800000	;set r11 to 'one'
+			ADD r6, r6, r11		;add 'one' to p1 exponent
+			CMP r6,r7			;compare exponents
+			BLT P1_Fix_Exp		;jump back to loop
+			B EQ_No_Fix_Needed
 P2_Fix_Exp:
+			;P1 > P2
+			MOV r9, r9, LSL #1	; shift p2 mantissa
+			MOV r11, #0x800000	;set r11 to 'one'
+			ADD r7, r7, r11		;add 'one' to p2 exponent
+			CMP r6,r7			;compare exponents
+			BGT P2_Fix_Exp		;jump back to loop
+			B EQ_No_Fix_Needed
 			
 EQ_No_Fix_Needed:
 		
+			;;add mantissas
+		LDR r10, =GET_SIGN	;point r10  to 100..
+        LDR r10, [r10]		;r10 = 100..
+        MOV r1,r10			;r1 is get sign 
+        ;r11 has 100.. if p2 is neg
+        AND r11, r10, r5		;r10 has either 100... or 000...
+        ;r10 has 1000.. if p1 is neg
+        AND r10, r4, r10
         
+     
+     ;;before checking if their negative push mantissas to stack
+             STR r8, [SP,#36]
+             STR r9, [SP,#40]             
+     
+        CMP r10, r1		;if neg 
+        BEQ P1_negate		;goto p1_negate
+        B P1_Skip			;else skip negating p1
+P1_negate: 
+		MVN r8,r8
+		ADD r8, r8, #1
+		B P1_Skip
+P1_Skip:
+
+		CMP r11, r1		;if neg 
+        BEQ P2_negate		;goto p2_negate
+        B P2_Skip			;else skip negating p2
+P2_negate: 
+		MVN r9,r9
+		ADD r9, r9, #1
+		B P2_Skip
+P2_Skip:
+        
+        ;;add the mantisas
+		Add r2, r8, r9    
+		
+		;;check special cases
+		;;case_2: if both are neg    
+		;;case_1: if bigger mantissa is neg
+
+        LDR r9, [SP,#40]
+        LDR r8, [SP,#36]
+        
+        ;init sign of answer to zero
+        MOV r3, #0
+		;if #1 is neg
+		CMP r10, r1		;if P1 neg 
+		BEQ CASE_0
+		
+		;elif #2 is neg
+		CMP r11, r1		;if P2 neg 
+		BEQ CASE_1
+		
+		;else
+		B GOOD_TO_GO_NEGS
+		
+CASE_0:	;p1 is neg
+		CMP r11, r1		;if p2 neg
+		BEQ UNNEGATE
+		
+		;CHECK IF mantissa for p1 is bigger
+		CMP r8,r9
+		BGT UNNEGATE
+		;ELSE jump to good state
+		B GOOD_TO_GO_NEGS
+		
+CASE_1:	;#2 is neg
+		
+		;check if mantissa #2 is bigger 
+		CMP r9,r8
+		BGT UNNEGATE
+
+		B GOOD_TO_GO_NEGS				
+				
+UNNEGATE:
+		SUB r2, r2, #1
+		MVN r2, r2
+		;put negative sign
+		MOV r3, r1 	
+		
+		B GOOD_TO_GO_NEGS
+GOOD_TO_GO_NEGS:
+        ;check for normalization
+        mov r1,#0x00FFFFFF
+        CMP r2, r1
+ 		BGT NORMALIZE
+ 		B NORM_GOOD
+NORMALIZE:
+		;shift mantissa
+		MOV r2, r2, LSR #1
+		;adjust exponent
+		mov r7, #0x800000
+		ADD r6, r6, r7
+		
+		;check for normalization
+		mov r7, #0x00FFFFFF
+        CMP r2, r7
+ 		BGT NORMALIZE
+ 		B NORM_GOOD
+ 		
+NORM_GOOD:
+
+		;remove leading 1
+		LDR r1, =GET_MANTISSA
+		LDR r7, [r1]
+
+		AND r2, r2, r7
+		;OR everything together
+		ORR r3, r3, r2
+		ORR r3, r3, r6
+		LDR r0, =ADD_RESULT
+ 		STR r3, [r0]
+ 		
         ;stack: restore lr, registers 4-6, stack pointer
         LDR r6, [SP,#0]
         LDR r5, [SP,#4]
@@ -267,7 +379,8 @@ EQ_No_Fix_Needed:
         LDR r10, [SP,#24]
         LDR r11, [SP,#28]
         LDR lr, [SP,#32]
-        ADD SP, SP, #36
+        ADD SP, SP, #44
+        MOV PC, lr
         
        
         
