@@ -201,10 +201,15 @@ _start:
         STR r5, [SP,#4]
         STR r6, [SP,#0] 
         
+        MOV r11, #0
+        MOV r10, #0
+        MOV r9, #0
+        MOV r8, #0
         MOV r7, #0       ;clears registers
         MOV r4, #0
         MOV r5, #0
         MOV r6, #0
+        
         
         LDR r4, =INPUT1_FLOAT
         LDR r4, [r4]		;r4 = input 1 in ieee754
@@ -234,25 +239,25 @@ _start:
 	;if exponents are different
 	
 		CMP	r6,r7
-		BGT	P2_Fix_Exp
-		BLT P1_Fix_Exp
+		BGT	A2_Fix_Exp
+		BLT A1_Fix_Exp
 		B	EQ_No_Fix_Needed
 		
-P1_Fix_Exp:
+A1_Fix_Exp:
 			;P2 > P1
 			MOV r8, r8, LSL #1	; shift p1 mantissa
 			MOV r11, #0x800000	;set r11 to 'one'
 			ADD r6, r6, r11		;add 'one' to p1 exponent
 			CMP r6,r7			;compare exponents
-			BLT P1_Fix_Exp		;jump back to loop
+			BLT A1_Fix_Exp		;jump back to loop
 			B EQ_No_Fix_Needed
-P2_Fix_Exp:
+A2_Fix_Exp:
 			;P1 > P2
 			MOV r9, r9, LSL #1	; shift p2 mantissa
 			MOV r11, #0x800000	;set r11 to 'one'
 			ADD r7, r7, r11		;add 'one' to p2 exponent
 			CMP r6,r7			;compare exponents
-			BGT P2_Fix_Exp		;jump back to loop
+			BGT A2_Fix_Exp		;jump back to loop
 			B EQ_No_Fix_Needed
 			
 EQ_No_Fix_Needed:
@@ -272,22 +277,22 @@ EQ_No_Fix_Needed:
              STR r9, [SP,#40]             
      
         CMP r10, r1		;if neg 
-        BEQ P1_negate		;goto p1_negate
-        B P1_Skip			;else skip negating p1
-P1_negate: 
+        BEQ A1_negate		;goto p1_negate
+        B A1_Skip			;else skip negating p1
+A1_negate: 
 		MVN r8,r8
 		ADD r8, r8, #1
-		B P1_Skip
-P1_Skip:
+		B A1_Skip
+A1_Skip:
 
 		CMP r11, r1		;if neg 
-        BEQ P2_negate		;goto p2_negate
-        B P2_Skip			;else skip negating p2
-P2_negate: 
+        BEQ A2_negate		;goto p2_negate
+        B A2_Skip			;else skip negating p2
+A2_negate: 
 		MVN r9,r9
 		ADD r9, r9, #1
-		B P2_Skip
-P2_Skip:
+		B A2_Skip
+A2_Skip:
         
         ;;add the mantisas
 		Add r2, r8, r9    
@@ -389,6 +394,218 @@ NORM_GOOD:
 
     _SUB:
     ;subtraction subroutine code goes here
+    	SUB SP, SP, #44
+        STR lr, [SP,#32]
+        STR r11, [SP,#28]
+        STR r10, [SP,#24]
+        STR r9, [SP,#20]
+        STR r8, [SP,#16]
+        STR r7, [SP,#12]
+        STR r4, [SP,#8]
+        STR r5, [SP,#4]
+        STR r6, [SP,#0] 
+        
+        MOV r11, #0
+        MOV r10, #0
+        MOV r9, #0
+        MOV r8, #0
+        MOV r7, #0       ;clears registers
+        MOV r4, #0
+        MOV r5, #0
+        MOV r6, #0
+
+		LDR r4, =INPUT1_FLOAT
+        LDR r4, [r4]		;r4 = input 1 in ieee754
+        
+		LDR r5, =INPUT2_FLOAT
+        LDR r5, [r5]		;r5 = input 2 in ieee754
+		
+		LDR r7, =GET_EXPONENT  	;used to get exponent 
+        LDR r7, [r7]		
+		
+		AND r6, r4, r7		; r6 has input1's exponent
+		AND r7, r5, r7 		; r7 has input2's exponent  
+		
+		LDR r10, =GET_MANTISSA
+		LDR r10, [r10]
+		AND r8, r10, r4    ;r8 has p1 mantissa
+		AND r9, r10, r5	   ;r9 has p2 mantissa
+	
+	;add leading one to mantissa for r8 and r9
+	
+		
+		mov r12, #0x00800000
+		ORR r8, r8, r12 
+		ORR r9, r9, r12
+	
+	
+	;if exponents are different
+	
+		CMP	r6,r7
+		BGT	S2_Fix_Exp
+		BLT S1_Fix_Exp
+		B	SEQ_No_Fix_Needed
+		
+S1_Fix_Exp:
+			;P2 > P1
+			MOV r8, r8, LSL #1	; shift p1 mantissa
+			MOV r11, #0x800000	;set r11 to 'one'
+			ADD r6, r6, r11		;add 'one' to p1 exponent
+			CMP r6,r7			;compare exponents
+			BLT S1_Fix_Exp		;jump back to loop
+			B SEQ_No_Fix_Needed
+S2_Fix_Exp:
+			;P1 > P2
+			MOV r9, r9, LSL #1	; shift p2 mantissa
+			MOV r11, #0x800000	;set r11 to 'one'
+			ADD r7, r7, r11		;add 'one' to p2 exponent
+			CMP r6,r7			;compare exponents
+			BGT S2_Fix_Exp		;jump back to loop
+			B SEQ_No_Fix_Needed
+			
+SEQ_No_Fix_Needed:
+		
+			;;add mantissas
+		LDR r10, =GET_SIGN	;point r10  to 100..
+        LDR r10, [r10]		;r10 = 100..
+        MOV r1,r10			;r1 is get sign 
+        ;r11 has 100.. if p2 is neg
+        AND r11, r10, r5		;r10 has either 100... or 000...
+        ;r10 has 1000.. if p1 is neg
+        AND r10, r4, r10
+        
+         ;;before checking if they're negative push mantissas to stack
+             STR r8, [SP,#36]
+             STR r9, [SP,#40] 
+        
+        CMP r10, r1
+        BEQ other1
+        B 	other2
+        
+        
+        
+ other1:
+ 		MOV r8, #0
+ 		AND r10, r10, r8
+ 		B 	other3
+ other2:
+ 		ORR r10, r10, r1
+ 		B	other3
+ other3:
+     ;;before checking if they're negative push mantissas to stack
+             EOR r8, r8, r8
+             EOR r9, r9, r9             
+     
+        CMP r10, r1		;if neg 
+        BEQ S1_negate		;goto p1_negate
+        B S1_Skip			;else skip negating p1
+S1_negate: 
+		MVN r8,r8
+		ADD r8, r8, #1
+		B S1_Skip
+S1_Skip:
+
+		CMP r11, r1		;if neg 
+        BEQ S2_negate		;goto p2_negate
+        B S2_Skip			;else skip negating p2
+S2_negate: 
+		MVN r9,r9
+		ADD r9, r9, #1
+		B S2_Skip
+S2_Skip:
+        
+        ;;add the mantisas
+		Add r2, r8, r9    
+		
+		;;check special cases
+		;;case_2: if both are neg    
+		;;case_1: if bigger mantissa is neg
+
+        LDR r9, [SP,#40]
+        LDR r8, [SP,#36]
+        
+        ;init sign of answer to zero
+        MOV r3, #0
+		;if #1 is neg
+		CMP r10, r1		;if P1 neg 
+		BEQ SUBCASE_0
+		
+		;elif #2 is neg
+		CMP r11, r1		;if P2 neg 
+		BEQ SUBCASE_1
+		
+		;else
+		B SUBGOOD_TO_GO_NEGS
+		
+SUBCASE_0:	;p1 is neg
+		CMP r11, r1		;if p2 neg
+		BEQ S_UNNEGATE
+		
+		;CHECK IF mantissa for p1 is bigger
+		CMP r8,r9
+		BGT S_UNNEGATE
+		;ELSE jump to good state
+		B SUBGOOD_TO_GO_NEGS
+		
+SUBCASE_1:	;#2 is neg
+		
+		;check if mantissa #2 is bigger 
+		CMP r9,r8
+		BGT S_UNNEGATE
+
+		B SUBGOOD_TO_GO_NEGS				
+				
+S_UNNEGATE:
+		SUB r2, r2, #1
+		MVN r2, r2
+		;put negative sign
+		MOV r3, r1 	
+		
+		B SUBGOOD_TO_GO_NEGS
+SUBGOOD_TO_GO_NEGS:
+        ;check for normalization
+        mov r1,#0x00FFFFFF
+        CMP r2, r1
+ 		BGT S_NORMALIZE
+ 		B 	SUBNORM_GOOD
+S_NORMALIZE:
+		;shift mantissa
+		MOV r2, r2, LSR #1
+		;adjust exponent
+		mov r7, #0x800000
+		ADD r6, r6, r7
+		
+		;check for normalization
+		mov r7, #0x00FFFFFF
+        CMP r2, r7
+ 		BGT S_NORMALIZE
+ 		B 	SUBNORM_GOOD
+ 		
+SUBNORM_GOOD:
+
+		;remove leading 1
+		LDR r1, =GET_MANTISSA
+		LDR r7, [r1]
+
+		AND r2, r2, r7
+		;OR everything together
+		ORR r3, r3, r2
+		ORR r3, r3, r6
+		LDR r0, =ADD_RESULT
+ 		STR r3, [r0]
+ 		
+        ;stack: restore lr, registers 4-6, stack pointer
+        LDR r6, [SP,#0]
+        LDR r5, [SP,#4]
+        LDR r4, [SP,#8]
+        LDR r7, [SP,#12]
+        LDR r8, [SP,#16]
+        LDR r9, [SP,#20]
+        LDR r10, [SP,#24]
+        LDR r11, [SP,#28]
+        LDR lr, [SP,#32]
+        ADD SP, SP, #44
+        MOV PC, lr
 
     _MUL:
     ;multiplication subroutine code goes here
