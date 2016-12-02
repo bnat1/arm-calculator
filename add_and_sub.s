@@ -6,9 +6,9 @@
 
 ;inputs
 ;+100.000
-INPUT1: .word 0x00640000
+INPUT1: .word 0x0;0x00640000
 ;-37.123
-INPUT2: .word 0x80251F7C
+INPUT2: .word 0x0;0x80251F7C
 
 ;results
 INPUT1_FLOAT: .word 0   ;result of conversion to float for input 1
@@ -45,7 +45,7 @@ _start:
     BL _DUMB_TO_IEEE
 
     ;at this point, the two inputs will be stored in INPUT1_FLOAT and INPUT2_FLOAT for usage. 
-    ;make sure those registers don't change!
+    ;make sure those registers dont change!
 
     ;addition
     BL _ADD
@@ -68,17 +68,17 @@ _start:
         STR LR, [SP,#0]
 
         ;Input 1
-        LDR r0, =INPUT1
+        LDR r0, =INPUT1 		;get input 1
         LDR r0, [r0]
-        BL _GET_FLOAT
-        LDR r1, =INPUT1_FLOAT
-        STR r0, [r1]
+        BL _GET_FLOAT			;invoke subroutine to convert to float (located below this subroutine)
+        LDR r1, =INPUT1_FLOAT	
+        STR r0, [r1]			;store in memory
 
         ;Input 2
-        LDR r0, =INPUT2
+        LDR r0, =INPUT2 		;get input 2
         LDR r0, [r0]
-        BL _GET_FLOAT
-        LDR r1, =INPUT2_FLOAT
+        BL _GET_FLOAT 			;convert to float
+        LDR r1, =INPUT2_FLOAT 	;store answer
         STR r0, [r1]
 
         ;restore LR 
@@ -98,25 +98,26 @@ _start:
         
         ;input is in r0
 
-        ;get sign layer in r1
+        ;;get sign layer in r1
         LDR r1, =GET_SIGN
         LDR r1, [r1]
         AND r1, r0, r1
 
-        ;get exponent layer in r2
+        ;;put exponent layer in r2
+
         MOV r2, r0
         ;remove sign
         LDR r3, =REM_SIGN
         LDR r3, [r3]
         AND r2, r3, r2
         
+        ;compare to 0, special case
+        CMP r2, #0
+        BEQ _CONVERT_ZERO
+
         ;init shifting loop variables
         LDR r4, =EXP_INIT   ;counter
         LDR r4, [r4]    
-
-        ;compare to 0, special case
-        CMP r0, #0
-        BEQ _ZERO
 
         ;shift right until == 1
         _SRLOOP:
@@ -129,12 +130,6 @@ _start:
         ADD r4, r4, #1
         B _SRLOOP
         
-        _ZERO:
-        ;set exponent to 0, i.e. 127
-        LDR r4, =EXP_ZERO
-        LDR r4, [r4]
-        B _SRLOOP_END
-
         _SRLOOP_END:
         ;shift counter left, store in r2
         MOV r2, r4, LSL #23
@@ -165,13 +160,24 @@ _start:
         SUB r6, r4, r3
         MOV r5, r5, LSR r6
 
-        _DONE_MAN:
+_DONE_MAN:
         ;remove leading 1
         LDR r6, =REM_LEADING
         LDR r6, [r6]
         AND r5, r5, r6
         MOV r3, r5
+        B _ASSEMBLE_CONVERT
 
+_CONVERT_ZERO:
+        ;set exponent to 0
+		MOV r4, #0
+		;set mantissa to 0
+		MOV r3, #0
+		;set sign to 0
+		MOV r2, #0
+		B _ASSEMBLE_CONVERT
+
+_ASSEMBLE_CONVERT:
         ;OR everything together for final result
         ORR r0, r1, r2
         ORR r0, r0, r3
@@ -188,7 +194,6 @@ _start:
 
     _ADD:
     
- 
     ;addition subroutine code goes here
     ;store lr and used registers (r4-r6) on stack
         SUB SP, SP, #44
@@ -214,9 +219,13 @@ _start:
         
         LDR r4, =INPUT1_FLOAT
         LDR r4, [r4]		;r4 = input 1 in ieee754
+        CMP r4, r6 			;check if input 1 is zero
+        BEQ ADD_ZERO
         
 		LDR r5, =INPUT2_FLOAT
         LDR r5, [r5]		;r5 = input 2 in ieee754
+        CMP r5, r6 			;check if input 2 is zero
+        BEQ ADD_ZERO
 		
 		LDR r7, =GET_EXPONENT  	;used to get exponent 
         LDR r7, [r7]		
@@ -372,6 +381,14 @@ NORM_GOOD:
 		;OR everything together
 		ORR r3, r3, r2
 		ORR r3, r3, r6
+		B DONE_ADD
+ADD_ZERO:
+		;special case: one of the inputs is zero
+		;input 1 float is in r4, input 2 float is in r5
+		;at least one of them is zero 
+		ORR r3, r4, r5
+		B DONE_ADD
+DONE_ADD:
 		LDR r0, =ADD_RESULT
  		STR r3, [r0]
  		
@@ -417,9 +434,13 @@ NORM_GOOD:
 
 		LDR r4, =INPUT1_FLOAT
         LDR r4, [r4]		;r4 = input 1 in ieee754
+        CMP  r4, r6 		;compare to zero 
+        BEQ SUB_ZERO1 		;special case1: first input is zero, eg, 0 - input2float
         
 		LDR r5, =INPUT2_FLOAT
         LDR r5, [r5]		;r5 = input 2 in ieee754
+        CMP r5, r6 			;compare to zero
+        BEQ SUB_ZERO2 		;specical case 2: second input is zero, eg, input1float - 0
 		
 		LDR r7, =GET_EXPONENT  	;used to get exponent 
         LDR r7, [r7]		
@@ -587,11 +608,34 @@ SUBNORM_GOOD:
 		;remove leading 1
 		LDR r1, =GET_MANTISSA
 		LDR r7, [r1]
-
 		AND r2, r2, r7
+		B SUB_ASSEMBLE
+
+SUB_ZERO1:
+		;0 - x, need to negate the sign of input 2 float
+		MOV r3, r5				;input 2 float
+		MOV r9, #0x7FFFFFFF		
+		AND r3, r3, r9			;remove sign of input 2 float
+		MOV r6, #0x80000000
+		AND r6, r6, r5 			;get sign of original input 2 float
+		MVN r6, r6 				;flip bits of sign
+		MOV r9, #0x80000000
+		AND r6, r6, r9			;mask out non-sign bits
+		ORR r3, r3, r6 			;put flipped sign back in 
+		B SUB_DONE
+
+SUB_ZERO2:
+		;x - 0
+		;input 1 in r4
+		MOV r3, r4
+		B SUB_DONE
+
+SUB_ASSEMBLE:
 		;OR everything together
 		ORR r3, r3, r2
 		ORR r3, r3, r6
+		B SUB_DONE
+SUB_DONE:
 		LDR r0, =SUB_RESULT
  		STR r3, [r0]
  		
@@ -606,6 +650,8 @@ SUBNORM_GOOD:
         LDR r11, [SP,#28]
         LDR lr, [SP,#32]
         ADD SP, SP, #44
+
+        ;return
         MOV PC, lr
 
     _MUL:
@@ -621,14 +667,22 @@ SUBNORM_GOOD:
 		LDR	r1, =INPUT2_FLOAT
 		LDR	r1, [r1]
 		
-		;;get exponents 
+		;;get exponents, check if either input is zero
+		;;ieee, zero is represented with zero in exponent field
+		;;no need to check mantissa for zero because the input is normalized
 		
 		LDR r3, =GET_EXPONENT
 		LDR r3, [r3]
+		MOV r4, #0
 		
 		AND r2, r3, r0		; get exponent 1
-		AND r3, r3, r1		; get exponent 2
+		CMP r2, r4 			; check if zero
+		BEQ MULT_ZERO
 		
+		AND r3, r3, r1		; get exponent 2
+		CMP r3, r4 			; check if zero
+		BEQ MULT_ZERO
+
 		;;temp use r4 for '127'
 		mov r4, #0x3F800000
 		
@@ -652,19 +706,19 @@ SUBNORM_GOOD:
 		ORR r4, r4, r5			;add leading 1 to mantissa 2
 
 
-		MOV r6, #0
-		MOV r7, #0
-		MOV r8, #1
+		MOV r6, #0				;result of multiplication will be in r6 and r7
+		MOV r7, #0				;r7 extends r6's bits, since the result of 32 bit multiplication takes up to 64 bits
+		MOV r8, #1				;added to r7 in case of r6 carrying out
 		
 		;;multiply		
 		
-		MOV r5, r4					; r5 is counter r5 is bae
+		MOV r5, r4					; r5 (input 2 mantissa) is counter
 		B	multiply_loop			; goto multiply loop 
 		
 multiply_loop: 
 
-		ADCS	r6, r6, r3			;;add input 1 mantissa to itself and store in r6
-		ADDCS	r7,r7, r8			;;carry out into r7 ( carry overflow from r6 to r7)
+		ADCS	r6, r6, r3			;;add input 1 mantissa to itself and store in r6, set carry flag if carry out
+		ADDCS	r7,r7, r8			;;conditionally add 1 to r7 if carry out set ( carry out from r6 into r7 )
 		
 		SUB		r5,r5, #1			;; decrement counter 
 		
@@ -681,13 +735,14 @@ OUT_OF_LOOPY:
 		
 		MOV r8, #1
 		EOR r9,r9,r9
-		
-		CMP r7, r5
+									;;result of multiplication will have at least 47 bits (32 bits in r6, 15 bits in r7)
+									;;if it has more, it needs to be normalized
+		CMP r7, r5					;;check if mantissa has more than 47 bits
 		BGT MULT_NORMALIZER
 		B MULT_NORMALIZER_DONE
 
 MULT_NORMALIZER:		
-		AND r9, r8,r7				; r9 has first bit of r7
+		AND r9, r8,r7			; save first bit of r7
 		MOV r9, r9, LSL #31		@ shift r9 to 32ndth (tm) bit 
 		
 		mov r7, r7, lsr #1		@ shift higher mantissa register to right one position
@@ -696,18 +751,19 @@ MULT_NORMALIZER:
 		ADD r6, r6, r9				@ put shifted out bit from higher mantissa into lower mantissa
 	
 		EOR r9,r9,r9
-		MOV r9, #0x800000			; set r9 to 'one' (exponent is in the middle)
+		MOV r9, #0x800000			; set r9 to 'one', to be added to exponent (exponent is in the middle in ieee)
 		
 		ADD r2, r2,r9				;add 'one' to exponent
 		
 									;we're almost done
-		CMP r7, r5					; if r7 > r5
+		CMP r7, r5					; if r7 > 15 bits
 		BGT MULT_NORMALIZER		;do again
 									;else
 		B MULT_NORMALIZER_DONE	;we're done normalizing exponent proceed
+		;;at this point, mantissa is in r6 and r7, need to shift it right into r6
 MULT_NORMALIZER_DONE:		
 
-		;; prepare mantissa 
+		;; prepare mantissa for final answer
 		MOV r9, #0
 		AND r9, r8,r7				; r9 has first bit of r7
 		MOV r9, r9, LSL #31		@ shift r9 to 32ndth (tm) bit 
@@ -723,16 +779,15 @@ MULT_NORMALIZER_DONE:
 										;else
 		B MAKE_R6_GREAT_AGAIN			;fix r6
 MAKE_R6_GREAT_AGAIN:
-
+		;;mantissa takes up 32 bits of r6, need to put it in last 23 bits 
 		MOV	r6,r6, LSR #8
 		LDR	r7, =GET_MANTISSA
 		LDR r7, [r7]			;used to remove leading one from mantissa
-
-								@we'll make ARM pay for the removal		
-		AND r6,r6,r7 			@this is the best mantissa removal 
-								@That removal was hugeeeeee, I promise
-		
+										
+		AND r6,r6,r7 			;remove leading one from mantissa 
+								
 		B 	MULT_GET_THE_SIGN	;go to next step 
+
 MULT_GET_THE_SIGN:
 		;;get the sign
 		
@@ -748,37 +803,35 @@ MULT_GET_THE_SIGN:
 		@r3 wil hold the sign
 
 		
-		EOR r3,r3,r3
-		EOR r4,r4,r4	;input 1	sign
-		EOR r5,r5,r5	;input 2	sign
+		EOR r3,r3,r3	;used for final answer sign
+		EOR r4,r4,r4	;used for input 1	sign
+		EOR r5,r5,r5	;used for input 2	sign
 		
-		;
 		AND r4, r0, r8		; get input 1 sign bit
 		AND r5, r1, r8		; get input 2 sign bit
 		
-		EOR	r3, r4, r5		; if r4 == r5
+		EOR	r3, r4, r5		; answer positive if signs are same, negative if different
 		
-		;;assemble the number together into r3
-		
+		B MULT_ASSEMBLE
+
+MULT_ZERO:
+		;;answer is zero, special case
+		MOV r3, #0
+		MOV r2, #0
+		MOV r6, #0
+
+MULT_ASSEMBLE:
 		ORR r3, r3, r2		;put the exponent in 
 		ORR	r3, r3, r6		;put the mantissa in
-    ;;store it back 		
+
+    ;;store answer in memory	
 		LDR r4, =MUL_RESULT		;get pointer to result var
 		STR	r3, [r4]				;put into memory 
-		
-    ;;QED
-    
+
         LDR lr, [SP,#0]
         ADD SP, SP, #4    
         MOV PC, lr    
     
-    
-    
-    
-    
-    
-    
-
     _exit:
         mov     r0, #0      ;status -> 0 
         mov     r7, #1      ;exit is syscall #1 
