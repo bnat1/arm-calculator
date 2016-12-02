@@ -29,6 +29,7 @@ MAN_START: .word 0x86   ;       ;exponent where mantissa starts, eg, 2^7
 REM_LEADING: .word 0xFF7FFFFF   ;bitmask to remove leading 1
 GET_EXPONENT: .word 0x7F800000	;used to get the exponent in adder
 GET_MANTISSA: .word 0x7FFFFF    ;used to get mantissa
+MULT_NORMIE: .word 0x00007FFF	;used to normalize the mantissa during multiplication
 
 
 ;This section is for instructions
@@ -478,21 +479,21 @@ SEQ_No_Fix_Needed:
              STR r8, [SP,#36]
              STR r9, [SP,#40] 
         
-        CMP r10, r1
+        CMP r11, r1
         BEQ other1
         B 	other2
         
         
         
  other1:
- 		MOV r8, #0
- 		AND r10, r10, r8
+ 		MOV r9, #0
+ 		AND r11, r11, r8
  		B 	other3
  other2:
- 		ORR r10, r10, r1
+ 		ORR r11, r11, r1
  		B	other3
  other3:
-     ;;before checking if they're negative push mantissas to stack
+
              EOR r8, r8, r8
              EOR r9, r9, r9             
      
@@ -591,7 +592,7 @@ SUBNORM_GOOD:
 		;OR everything together
 		ORR r3, r3, r2
 		ORR r3, r3, r6
-		LDR r0, =ADD_RESULT
+		LDR r0, =SUB_RESULT
  		STR r3, [r0]
  		
         ;stack: restore lr, registers 4-6, stack pointer
@@ -609,6 +610,174 @@ SUBNORM_GOOD:
 
     _MUL:
     ;multiplication subroutine code goes here
+		SUB SP, SP, #4
+       STR lr, [SP,#0]
+	
+		;first get two inputs     
+		
+		
+		ldr	r0,=INPUT1_FLOAT
+		LDR r0,[r0]
+		LDR	r1, =INPUT2_FLOAT
+		LDR	r1, [r1]
+		
+		;;get exponents 
+		
+		LDR r3, =GET_EXPONENT
+		LDR r3, [r3]
+		
+		AND r2, r3, r0		; get exponent 1
+		AND r3, r3, r1		; get exponent 2
+		
+		;;temp use r4 for '127'
+		mov r4, #0x3F800000
+		
+		SUB r2, r2, r4		; get rid of bias on exponent 1
+		SUB r3, r3, r4		; get rid of bias on exponent 2		
+		
+		ADD r2,r2,r3		; add exponents together
+		
+		;;r4 and r3 empty 
+		
+		;;get the mantissas
+		
+		LDR r3, =GET_MANTISSA
+		LDR r3, [r3]
+
+		AND r4, r1 , r3	; get mantissa 2
+		AND r3, r0 , r3	; get mantissa 1
+		
+		mov r5, #0x00800000
+		ORR r3, r3, r5			;add leading 1 to mantissa 1
+		ORR r4, r4, r5			;add leading 1 to mantissa 2
+
+
+		MOV r6, #0
+		MOV r7, #0
+		MOV r8, #1
+		
+		;;multiply		
+		
+		MOV r5, r4					; r5 is counter r5 is bae
+		B	multiply_loop			; goto multiply loop 
+		
+multiply_loop: 
+
+		ADCS	r6, r6, r3			;;add input 1 mantissa to itself and store in r6
+		ADDCS	r7,r7, r8			;;carry out into r7 ( carry overflow from r6 to r7)
+		
+		SUB		r5,r5, #1			;; decrement counter 
+		
+		CMP		r5,#0				;;if r5 > 0
+		BGT multiply_loop			;;loop again
+		B OUT_OF_LOOPY
+
+OUT_OF_LOOPY:
+		;;normalize the result
+		
+		EOR r5,r5,r5
+		LDR r5, =MULT_NORMIE
+		LDR r5,[r5]
+		
+		MOV r8, #1
+		EOR r9,r9,r9
+		
+		CMP r7, r5
+		BGT MULT_NORMALIZER
+		B MULT_NORMALIZER_DONE
+
+MULT_NORMALIZER:		
+		AND r9, r8,r7				; r9 has first bit of r7
+		MOV r9, r9, LSL #31		@ shift r9 to 32ndth (tm) bit 
+		
+		mov r7, r7, lsr #1		@ shift higher mantissa register to right one position
+		mov r6, r6, lsr #1		@ shift lower mantissa register to right one position
+		
+		ADD r6, r6, r9				@ put shifted out bit from higher mantissa into lower mantissa
+	
+		EOR r9,r9,r9
+		MOV r9, #0x800000			; set r9 to 'one' (exponent is in the middle)
+		
+		ADD r2, r2,r9				;add 'one' to exponent
+		
+									;we're almost done
+		CMP r7, r5					; if r7 > r5
+		BGT MULT_NORMALIZER		;do again
+									;else
+		B MULT_NORMALIZER_DONE	;we're done normalizing exponent proceed
+MULT_NORMALIZER_DONE:		
+
+		;; prepare mantissa 
+		MOV r9, #0
+		AND r9, r8,r7				; r9 has first bit of r7
+		MOV r9, r9, LSL #31		@ shift r9 to 32ndth (tm) bit 
+		
+		mov r7, r7, lsr #1		@ shift higher mantissa register to right one position
+		mov r6, r6, lsr #1		@ shift lower mantissa register to right one position
+		
+		ADD r6, r6, r9				@ put shifted out bit from higher mantissa into lower mantissa
+				
+		
+		CMP r7, #0						;if r7 is not all zeroes
+		BGT	MULT_NORMALIZER_DONE		;go back
+										;else
+		B MAKE_R6_GREAT_AGAIN			;fix r6
+MAKE_R6_GREAT_AGAIN:
+
+		MOV	r6,r6, LSR #8
+		LDR	r7, =GET_MANTISSA
+		LDR r7, [r7]			;used to remove leading one from mantissa
+
+								@we'll make ARM pay for the removal		
+		AND r6,r6,r7 			@this is the best mantissa removal 
+								@That removal was hugeeeeee, I promise
+		
+		B 	MULT_GET_THE_SIGN	;go to next step 
+MULT_GET_THE_SIGN:
+		;;get the sign
+		
+		EOR r8,r8,r8
+		LDR r8, =GET_SIGN
+		LDR r8, [r8]
+		
+		;recap
+		@r0: input 1
+		@r1: input 2
+		@r2: has the exponent
+		@r6: has the mantissa
+		@r3 wil hold the sign
+
+		
+		EOR r3,r3,r3
+		EOR r4,r4,r4	;input 1	sign
+		EOR r5,r5,r5	;input 2	sign
+		
+		;
+		AND r4, r0, r8		; get input 1 sign bit
+		AND r5, r1, r8		; get input 2 sign bit
+		
+		EOR	r3, r4, r5		; if r4 == r5
+		
+		;;assemble the number together into r3
+		
+		ORR r3, r3, r2		;put the exponent in 
+		ORR	r3, r3, r6		;put the mantissa in
+    ;;store it back 		
+		LDR r4, =MUL_RESULT		;get pointer to result var
+		STR	r3, [r4]				;put into memory 
+		
+    ;;QED
+    
+        LDR lr, [SP,#0]
+        ADD SP, SP, #4    
+        MOV PC, lr    
+    
+    
+    
+    
+    
+    
+    
 
     _exit:
         mov     r0, #0      ;status -> 0 
