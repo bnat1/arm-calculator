@@ -265,6 +265,7 @@ A2_negate:
 A2_Skip:
 	ADD r2, r8, r9    			;add mantissas 
 	CMP r2, #0 					;compare result with zero
+	BEQ ADD_ZERO_ANS			;result of adding mantissas is zero: need to make ans ieee zero
 	BMI UNNEGATE 				;unnegate answer if negative
 	B GOOD_TO_GO_NEGS 			;else dont unnegate
 			
@@ -317,6 +318,11 @@ ADD_ZERO:
 	;input 1 is in r4, input 2 is in r5
 	;at least one of them is zero 
 	ORR r3, r4, r5
+	B DONE_ADD
+
+ADD_ZERO_ANS:
+	;answer is zero
+	MOV r3, #0
 	B DONE_ADD
 
 DONE_ADD:
