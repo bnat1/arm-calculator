@@ -25,43 +25,38 @@
 .global _main
 
 _main:
-
     BL _DUMB_TO_IEEE		;convert to float
     BL _ADD					;addition
     BL _SUB					;subtraction
     BL _MUL					;multiplication
     B _exit					;exit
 
-    
+
 ;;subroutines
 
+;converts both dumb format inputs to ieee
 ;takes input from INPUT1 and INPUT2
 ;stores results in INPUT1_FLOAT and INPUT2_FLOAT
 _DUMB_TO_IEEE:
-    ;store LR on stack
     SUB SP, SP, #4
-    STR LR, [SP,#0]
+    STR LR, [SP,#0] 		;store LR on stack
 
-    ;Input 1
     LDR r0, =INPUT1 		;get input 1
     LDR r0, [r0]
     BL _GET_FLOAT			;invoke subroutine to convert to float (located below this subroutine)
     LDR r1, =INPUT1_FLOAT	
     STR r0, [r1]			;store in memory
 
-    ;Input 2
     LDR r0, =INPUT2 		;get input 2
     LDR r0, [r0]
     BL _GET_FLOAT 			;convert to float
     LDR r1, =INPUT2_FLOAT 	;store answer
     STR r0, [r1]
 
-    ;restore LR and stack pointer
-    LDR LR, [SP,#0]
+    LDR LR, [SP,#0] 		;restore LR and stack pointer
     ADD SP, SP, #4
 
-    ;return
-    MOV PC, LR
+    MOV PC, LR 				;return
 
 
 ;convert a single number from dumb to ieee
@@ -133,11 +128,60 @@ CONVERT_DONE:
     ;;return
     MOV PC, LR
 
+_ADD:
+    SUB SP, SP, #4
+    STR LR, [SP,#0] 			;store LR on stack
+	LDR r0, =INPUT1_FLOAT
+	LDR r0, [r0] 				;floating input 1
+	LDR r1, =INPUT2_FLOAT
+	LDR r1, [r1] 				;floating input 2
 
-;addition subroutine
-;gets input from INPUT1_FLOAT and INPUT2_FLOAT
-;puts output in ADD_RESULT
-_ADD:     
+	BL _ADD_SUB 				;call subroutine
+
+	LDR r1, =ADD_RESULT
+	STR r0, [r1] 				;store result in memory
+
+    LDR LR, [SP,#0] 			;restore LR and stack pointer
+    ADD SP, SP, #4
+
+	MOV pc, lr 					;return
+
+_SUB:
+    SUB SP, SP, #4
+    STR LR, [SP,#0] 			;store LR on stack
+
+	LDR r0, =INPUT1_FLOAT
+	LDR r0, [r0] 				;floating input 1
+	LDR r1, =INPUT2_FLOAT
+	LDR r1, [r1] 				;floating input 2
+	CMP r1, #0 					;negate second input if not zero
+	BNE SUB_START
+	 							;negate second input
+	LDR r2, =0x80000000
+	AND r2, r2, r1				;get sign of input 2
+	LDR r2, =0x7FFFFFFF 			
+	AND r3, r3, r1 				;mask sign off of input 2
+	MVN r2, r2 					;negate sign of input 2
+	LDR r4, =0x80000000 			
+	AND r2, r2, r4 				;prepare new sign
+	ORR r1, r2, r3 				;input 2 is negated
+	B SUB_START
+
+	SUB_START:
+	BL _ADD_SUB 				;call subroutine
+	LDR r1, =SUB_RESULT
+	STR r0, [r1] 				;store in memory
+
+    LDR LR, [SP,#0] 			;restore LR and stack pointer
+    ADD SP, SP, #4
+	
+	MOV pc, lr 					;return
+
+;addition/subtraction subroutine 
+;subtraction is same as addition with negated second input
+;gets input from r0 and r1
+;puts output in r0
+_ADD_SUB:     
     MOV r11, #0
     MOV r10, #0
     MOV r9, #0
@@ -147,12 +191,8 @@ _ADD:
     MOV r5, #0
     MOV r6, #0
     
-    
-    LDR r4, =INPUT1_FLOAT
-    LDR r4, [r4]				;r4 = input 1 in ieee754
-    
-	LDR r5, =INPUT2_FLOAT
-    LDR r5, [r5]				;r5 = input 2 in ieee754
+    MOV r4, r0
+    MOV r5, r1 					;two inputs
    
     CMP r4, r6 					;check if input 1 is zero
     BEQ ADD_ZERO
@@ -228,38 +268,9 @@ A2_negate:
 
 A2_Skip:
 	ADD r2, r8, r9    			;add mantissas 
-	
-	;;check cases that result in negative answer
-	;;1: if both are negative
-	;;2: if bigger mantissa is negative
-
-    LDR r9, [SP,#4] 			;mantissa 2 (shifted, but not negated)
-    LDR r8, [SP,#0] 			;mantissa 1 (shifted, but not negated)
-    ADD SP, SP, #8
-    MOV r3, #0 					;init sign of answer to positive
-    
-	CMP r10, r1					;if #1 is negative  
-	BEQ CASE_0
-								
-	CMP r11, r1		 			;elif #2 is negative
-	BEQ CASE_1
-	
-	B GOOD_TO_GO_NEGS			;else
-	
-CASE_0:	 						;#1 is neg
-	CMP r11, r1					;if #2 is also negative
-	BEQ UNNEGATE
-	
-	CMP r8,r9 					;if mantissa #1 is bigger
-	BGT UNNEGATE
-	
-	B GOOD_TO_GO_NEGS 			;else no need to unnegate
-	
-CASE_1:							;#2 is neg 
-	CMP r9,r8 					;check if mantissa #2 is bigger
-	BGT UNNEGATE
-
-	B GOOD_TO_GO_NEGS			;if not, no need to unnegate
+	CMP r2, #0 					;compare result with zero
+	BMI UNNEGATE 				;unnegate answer if negative
+	B GOOD_TO_GO_NEGS 			;else dont unnegate
 			
 UNNEGATE:
 	MVN r2, r2 					;undo twos complement
@@ -283,7 +294,7 @@ NORMALIZE1:
 	MOV r7, #0x00800000
 	ADD r6, r6, r7 				;adjust exponent (add 1)
 	
-	MOV r7, #0x00FFFFFF 		;check for normalization
+	MOV r7, #0x00FFFFFF 		;check if mantisssa more than 24 bits
     CMP r2, r7
 	BGT NORMALIZE1
 	B NORM_GOOD
@@ -297,7 +308,6 @@ NORMALIZE2:
 	BLT NORMALIZE2
 	B NORM_GOOD
 
-		
 NORM_GOOD:
 	LDR r7, =0x7FFFFF			;remove leading 1 from mantissa
 	AND r2, r2, r7
@@ -308,225 +318,16 @@ NORM_GOOD:
 
 ADD_ZERO:
 	;special case: one of the inputs is zero
-	;input 1 float is in r4, input 2 float is in r5
+	;input 1 is in r4, input 2 is in r5
 	;at least one of them is zero 
 	ORR r3, r4, r5
 	B DONE_ADD
 
 DONE_ADD:
-	LDR r0, =ADD_RESULT
-	STR r3, [r0]
-		
-    ;return
-    MOV PC, lr
+	MOV r0, r3
+    MOV PC, lr 					;return
     
             
-;subtraction subroutine
-;gets input from INPUT1_FLOAT and INPUT2_FLOAT
-;puts output in SUB_RESULT                
-_SUB:
-    MOV r11, #0
-    MOV r10, #0
-    MOV r9, #0
-    MOV r8, #0
-    MOV r7, #0       ;clears registers
-    MOV r4, #0
-    MOV r5, #0
-    MOV r6, #0
-
-	LDR r4, =INPUT1_FLOAT
-    LDR r4, [r4]				;r4 = input 1 in ieee754
-    
-	LDR r5, =INPUT2_FLOAT
-    LDR r5, [r5]				;r5 = input 2 in ieee754
-    
-    CMP r5, r6 					;compare to input 2 to zero
-    BEQ SUB_ZERO1 				;specical case 2: second input is zero, eg, input1float - 0
-	
-	;;negate input 2 to do subtraction
-	LDR r0, =0x80000000
-	AND r0, r0, r5				;get sign of input 2
-	LDR r1, =0x7FFFFFFF 			
-	AND r1, r1, r5 				;mask sign off of input 2
-	MVN r0, r0 					;negate sign of input 2
-	LDR r3, =0x80000000 			
-	AND r0, r0, r3 				;prepare new sign
-	ORR r5, r0, r1 				;input 2 is negated
-
-    CMP  r4, r6 				;compare input 1 to zero 
-    BEQ SUB_ZERO2 				;special case1: first input is zero, eg, 0 - input2float
-    
-
-	LDR r7, =0x7F800000  		;used to get exponent 
-	AND r6, r4, r7				; r6 has input1's exponent
-	AND r7, r5, r7 				; r7 has input2's exponent  
-	
-	LDR r10, =0x7FFFFF 			;get mantissa 
-	AND r8, r10, r4    			;r8 has mantissa 1
-	AND r9, r10, r5	   			;r9 has mantissa 2
-	
-	mov r12, #0x00800000		;give mantissas leading 1s
-	ORR r8, r8, r12 
-	ORR r9, r9, r12
-
-
-	;;if exponents are different, we need to make them equal and adjust
-	;;the mantissa of the smaller number
-
-	CMP	r6,r7 				
-	BGT	S2_Fix_Exp 				;exponent 2 is smaller
-	BLT S1_Fix_Exp 				;exponent 1 is smaller 
-	B	SEQ_No_Fix_Needed 		;exponents are equal
-	
-S1_Fix_Exp:
-		;P2 > P1
-		MOV r8, r8, LSR #1		; shift p1 mantissa
-		MOV r11, #0x800000		;set r11 to 'one'
-		ADD r6, r6, r11			;add 'one' to p1 exponent
-		CMP r6,r7				;compare exponents
-		BLT S1_Fix_Exp			;jump back to loop
-		B SEQ_No_Fix_Needed
-
-S2_Fix_Exp:
-		;P1 > P2
-		MOV r9, r9, LSR #1		; shift p2 mantissa
-		MOV r11, #0x800000		;set r11 to 'one'
-		ADD r7, r7, r11			;add 'one' to p2 exponent
-		CMP r6,r7				;compare exponents
-		BGT S2_Fix_Exp			;jump back to loop
-		B SEQ_No_Fix_Needed
-		
-SEQ_No_Fix_Needed:
-	
-	;;prepare to add mantissas together
-								;before adding, we need to convert negative numbers to twos comp
-	LDR r10, =0x80000000		;sign bit
-    MOV r1,r10					;r1 is also sign bit 
-    AND r11, r5, r10			;r11 has sign #2
-    AND r10, r4, r10			;r10 has sign #1
-    
-    SUB SP, SP, #8 				;push mantissas to stack before negating for later use
-    STR r8, [SP,#0]
-    STR r9, [SP,#4]      
-
-    CMP r10, r1 				;is input 1 negative?
-    BEQ S1_negate 				;negate input 1
-    B S1_Skip 					;skip negating input 1
-    
-S1_negate: 
-	MVN r8,r8 					;twos complement
-	ADD r8, r8, #1
-	B S1_Skip
-
-S1_Skip:
-	CMP r11, r1					;if sign 2 negative
-    BEQ S2_negate				;goto s2 negate
-    B S2_Skip					;else skip negating input 2
-
-S2_negate: 
-	MVN r9,r9 					;twos complemnet
-	ADD r9, r9, #1
-	B S2_Skip
-
-S2_Skip:
-	ADD r2, r8, r9 				;add mantissas    
-	
-	;;check cases that result in negative answer
-	;;1: if both are negative
-	;;2: if bigger mantissa is negative
-
-    LDR r9, [SP,#4] 			;mantissa 2 (shifted, but not negated)
-    LDR r8, [SP,#0] 			;mantissa 1 (shifted, but not negated)
-    ADD SP, SP, #8
-
-    MOV r3, #0					;init sign of answer to zero
-	CMP r10, r1					;if #1 is negative
-	BEQ SUBCASE_0
-	
-	CMP r11, r1					;elif #2 is negative
-	BEQ SUBCASE_1
-	
-	B SUBGOOD_TO_GO_NEGS 		;else
-	
-SUBCASE_0:	 					;#1 is negative
-	CMP r11, r1		    		;if #2 is also negative
-	BEQ S_UNNEGATE
-	
-	CMP r8,r9 					;check if mantissa #1 is bigger
-	BGT S_UNNEGATE
-	
-	B SUBGOOD_TO_GO_NEGS 		;else no need to unnegate
-	
-SUBCASE_1:						;#2 is neg
-	CMP r9,r8 					;check if mantissa #2 is bigger
-	BGT S_UNNEGATE
-
-	B SUBGOOD_TO_GO_NEGS		;if not, no need to unnegate		
-			
-S_UNNEGATE:
-	MVN r2, r2 					;undo twos comlement
-	ADD r2, r2, #1
-	MOV r3, r1 					;negative sign, previously set to positive
-	
-	B SUBGOOD_TO_GO_NEGS
-
-SUBGOOD_TO_GO_NEGS:
-	;;check if need to normalize answer
-    MOV r1, #0x00FFFFFF 		;check if needs normalization (more than 24 bits)
-    CMP r2, r1
-	BGT S_NORMALIZE1
-	MOV r1, #0x00800000 		;check if needs normalization (less than 24 bits)
-	CMP r1, r2 
-	BLT S_NORMALIZE2
-	B 	SUBNORM_GOOD 			;exactly 24 bits, no need to normalize
-
-S_NORMALIZE1:
-	MOV r2, r2, LSR #1 			;shift mantissa 
-	MOV r7, #0x00800000 		;adjust exponent (add 1)
-	ADD r6, r6, r7
-	
-	MOV r7, #0x00FFFFFF			;check for normalization
-    CMP r2, r7
-	BGT S_NORMALIZE1
-	B 	SUBNORM_GOOD
-
-S_NORMALIZE2:
-	MOV r2, r2, LSL #1 			;shift mantissa left
-	MOV r7, #0x00800000
-	SUB r6, r6, r7 				;adjust exponent (subtract 1)
-
-	CMP r7, r2 					;check if mantissa less than 24 bits
-	BLT S_NORMALIZE2
-	B SUBNORM_GOOD
-
-SUBNORM_GOOD:
-	LDR r7, =0x7FFFFF 			;remove leading 1 from mantissa
-	AND r2, r2, r7
-
-	ORR r3, r3, r2 				;OR everything together
-	ORR r3, r3, r6
-	B SUB_DONE
-
-SUB_ZERO2:
-	;0 - x
-	;negated input 2 is in r5
-	MOV r3, r5 
-	B SUB_DONE
-
-SUB_ZERO1:
-	;x - 0
-	;input 1 is in r4
-	MOV r3, r4
-	B SUB_DONE
-
-SUB_DONE:
-	LDR r0, =SUB_RESULT
-	STR r3, [r0]
-		
-    ;return
-    MOV PC, lr
-
-
 ;Multiplication subroutine
 ;input: INPUT1_FLOAT, INPUT2_FLOAT
 ;output: MUL_RESULT
@@ -614,7 +415,7 @@ MULT_NORMALIZER:
 	mov r7, r7, lsr #1		; shift higher mantissa register to right one position
 	mov r6, r6, lsr #1		; shift lower mantissa register to right one position
 	
-	ADD r6, r6, r9			; put shifted out bit from higher mantissa into lower mantissa
+	ORR r6, r6, r9			; put shifted out bit from higher mantissa into lower mantissa
 
 	EOR r9,r9,r9
 	MOV r9, #0x800000		; set r9 to 'one', to be added to exponent (exponent is in the middle in ieee)
@@ -639,46 +440,26 @@ MULT_NORMALIZER_DONE:
 	B 	MULT_GET_THE_SIGN	;go to next step 
 
 MULT_GET_THE_SIGN:
-	;;get the sign		
-	LDR r8, =0x80000000;	GET_SIGN
-	
-	;recap
-	;r0: input 1
-	;r1: input 2
-	;r2: has the exponent
-	;r6: has the mantissa
-	;r3 wil hold the sign
-
-	
-	EOR r3,r3,r3			;used for final answer sign
-	EOR r4,r4,r4			;used for input 1	sign
-	EOR r5,r5,r5			;used for input 2	sign
-	
+	LDR r8, =0x80000000 	;used to get the sign
 	AND r4, r0, r8			; get input 1 sign bit
 	AND r5, r1, r8			; get input 2 sign bit
-	
 	EOR	r3, r4, r5			; answer positive if signs are same, negative if different
 	
-	B MULT_ASSEMBLE
-
-MULT_ZERO:
-	;;answer is zero, special case
-	MOV r3, #0
-	MOV r2, #0
-	MOV r6, #0
+	B MULT_ASSEMBLE 		; assemble parts of answer
 
 MULT_ASSEMBLE:
-	ORR r3, r3, r2			;put the exponent in 
+	ORR r3, r3, r2			;or sign and exponent together
 	ORR	r3, r3, r6			;put the mantissa in
+	B MULT_DONE
 
-;;store answer in memory	
-	LDR r4, =MUL_RESULT		;get pointer to result var
-	STR	r3, [r4]			;put into memory 
+MULT_ZERO:
+	MOV r3, #0 				;answer is zero, special case
 
-	;return
-    MOV PC, lr    
+MULT_DONE:
+	LDR r4, =MUL_RESULT		
+	STR	r3, [r4]			;put answer into memory 
+    MOV PC, lr    			;return
 
+;;exit program 
 _exit:
-    mov     r0, #0      	;status -> 0 
-    mov     r7, #1      	;exit is syscall #1 
     swi     0x11        	;invoke syscall exit
