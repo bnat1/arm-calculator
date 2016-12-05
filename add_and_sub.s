@@ -242,11 +242,7 @@ EQ_No_Fix_Needed:
     MOV r1,r10					;r1 is also sign bit 
     AND r11, r5, r10			;r11 has sign #2
     AND r10, r4, r10			;r10 has sign #1
-    
-    SUB SP, SP, #8 				;push mantissas to stack before negating for later use
-    STR r8, [SP,#0]
-    STR r9, [SP,#4]             
- 
+     
     CMP r10, r1					;if sign 1 negative 
     BEQ A1_negate				;negate input 1
     B A1_Skip					;else skip negating input 1
