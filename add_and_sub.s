@@ -6,8 +6,8 @@
 
 	;inputs
 	;enter inputs in dumb format here, in hex
-	INPUT1: .word 0x0;0x00640000 	;+100.000
-	INPUT2: .word 0x0;0x80251F7C	;-37.123
+	INPUT1: .word 0x7FFFFFFF
+	INPUT2: .word 0x3FFFFFFF
 
 	;results will be stored in memory, pointed to by these labels
 	INPUT1_FLOAT: .word 0   ;result of conversion to float for input 1
@@ -175,8 +175,8 @@ _ADD:
 	;;if exponents are different, we need to make them equal and adjust
 	;;the mantissa of the smaller number
 	CMP	r6,r7
-	BGT	A2_Fix_Exp				;exponent 1 is smaller
-	BLT A1_Fix_Exp 				;exponent 2 is smaller
+	BGT	A2_Fix_Exp				;exponent 2 is smaller
+	BLT A1_Fix_Exp 				;exponent 1 is smaller
 	B	EQ_No_Fix_Needed 		;exponents equal
 	
 A1_Fix_Exp:
@@ -299,7 +299,7 @@ NORMALIZE2:
 
 		
 NORM_GOOD:
-	LDR r7, =0x7F800000			;remove leading 1 from mantissa
+	LDR r7, =0x7FFFFF			;remove leading 1 from mantissa
 	AND r2, r2, r7
 	
 	ORR r3, r3, r2 				;OR everything together
@@ -374,8 +374,8 @@ _SUB:
 	;;the mantissa of the smaller number
 
 	CMP	r6,r7 				
-	BGT	S2_Fix_Exp 				;exponent 1 is smaller
-	BLT S1_Fix_Exp 				;exponent 2 is smaller 
+	BGT	S2_Fix_Exp 				;exponent 2 is smaller
+	BLT S1_Fix_Exp 				;exponent 1 is smaller 
 	B	SEQ_No_Fix_Needed 		;exponents are equal
 	
 S1_Fix_Exp:
@@ -476,6 +476,7 @@ SUBGOOD_TO_GO_NEGS:
     CMP r2, r1
 	BGT S_NORMALIZE1
 	MOV r1, #0x00800000 		;check if needs normalization (less than 24 bits)
+	CMP r1, r2 
 	BLT S_NORMALIZE2
 	B 	SUBNORM_GOOD 			;exactly 24 bits, no need to normalize
 
@@ -558,6 +559,7 @@ _MUL:
 	SUB r3, r3, r4			; get rid of bias on exponent 2		
 		
 	ADD r2,r2,r3			; add exponents together
+	ADD r2, r2, r4 			; give bias back
 	
 	;;r4 and r3 empty 
 	
@@ -584,7 +586,7 @@ _MUL:
 	
 MULTIPLY_LOOP: 
 
-	ADCS	r6, r6, r3		;;add and accumulate mantissa 1 in r6, set carry flag if carry out
+	ADDS	r6, r6, r3		;;add and accumulate mantissa 1 in r6, set carry flag if carry out
 	ADDCS	r7,r7, r8		;;conditionally add 1 to r7 if carry out set ( carry out from r6 into r7 )
 	
 	SUB		r5,r5, #1		;; decrement counter 
