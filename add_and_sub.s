@@ -30,6 +30,7 @@ _main:
     BL _SUB					;subtraction, store in SUB_RESULT
     BL _MUL					;multiplication, store in MUL_RESULT
     BL _BUILT_IN			;built in fops, store in FOP_ADD, FOP_SUB, FOP_MUL
+    BL _CHECK_ANS			;move all results from memory to registers to easily check them
     B _exit					;exit
 
 
@@ -490,6 +491,31 @@ _BUILT_IN:
 	STR r3, [r5]
 	LDR r5, =FOP_ADD
 	STR r4, [r5]
+
+	MOV pc, lr 				;return
+
+;;move results to registers to check them
+_CHECK_ANS:
+	LDR r0, =INPUT1 		;original input 1
+	LDR r0, [r0] 
+	LDR r1, =INPUT2 		;original input 2
+	LDR r1, [r1]
+	LDR r2, =INPUT1_FLOAT 	;converted input 1
+	LDR r2, [r2]
+	LDR r3, =INPUT2_FLOAT 	;converrted input 2
+	LDR r3, [r3]
+	LDR r4, =ADD_RESULT 	;result of our add
+	LDR r4, [r4]
+	LDR r5, =FOP_ADD 		;result of built in add
+	LDR r5, [r5]
+	LDR r6, =SUB_RESULT 	;result of our sub
+	LDR r6, [r6]
+	LDR r7, =FOP_SUB 		;result of built in sub
+	LDR r7, [r7]
+	LDR r8, =MUL_RESULT 	;result of our mul
+	LDR r8, [r8]
+	LDR r9, =FOP_MUL 		;result of built in mul
+	LDR r9, [r9]
 
 	MOV pc, lr 				;return
 
