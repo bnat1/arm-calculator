@@ -25,10 +25,11 @@
 .global _main
 
 _main:
-    BL _DUMB_TO_IEEE		;convert to float
-    BL _ADD					;addition
-    BL _SUB					;subtraction
-    BL _MUL					;multiplication
+    BL _DUMB_TO_IEEE		;convert to float, store in INPUT1_FLOAT and INPUT2_FLOAT
+    BL _ADD					;addition, store in ADD_RESULT
+    BL _SUB					;subtraction, store in SUB_RESULT
+    BL _MUL					;multiplication, store in MUL_RESULT
+    BL _BUILT_IN			;built in fops, store in FOP_ADD, FOP_SUB, FOP_MUL
     B _exit					;exit
 
 
@@ -263,9 +264,10 @@ A2_negate:
 	B A2_Skip
 
 A2_Skip:
+	;;do the addition
 	ADD r2, r8, r9    			;add mantissas 
 	CMP r2, #0 					;compare result with zero
-	BEQ ADD_ZERO_ANS			;result of adding mantissas is zero: need to make ans ieee zero
+	BEQ ADD_ZERO_ANS			;result of adding mantissas is zero: need to make answer ieee zero
 	BMI UNNEGATE 				;unnegate answer if negative
 	B GOOD_TO_GO_NEGS 			;else dont unnegate
 			
@@ -461,6 +463,35 @@ MULT_DONE:
 	LDR r4, =MUL_RESULT		
 	STR	r3, [r4]			;put answer into memory 
     MOV PC, lr    			;return
+
+;;do built in floating point operations
+;;input: INPUT1_FLOAT, INPUT2_FLOAT
+;;output: stores answers in FOP_MUL, FOP_ADD, FOP_SUB
+_BUILT_IN:
+	LDR r0, =INPUT1_FLOAT 	;get inputs
+	LDR r0,[r0]
+	LDR r1, =INPUT2_FLOAT
+	LDR r1, [r1]
+	
+	FMSR s0, r0 			;transfer over to floating point registers
+	FMSR s1, r1
+	
+	FMULS s2, s0, s1 		;multiply
+	FADDS s3, s0, s1 		;add
+	FSUBS s4, s0, s1 		;subtract
+	
+	FMRS r2, s2 			;transfer back to regular registers
+	FMRS r3, s3
+	FMRS r4, s4
+
+	LDR r5, =FOP_MUL 		;store in memory
+	STR r2, [r5]
+	LDR r5, =FOP_SUB
+	STR r3, [r5]
+	LDR r5, =FOP_ADD
+	STR r4, [r5]
+
+	MOV pc, lr 				;return
 
 ;;exit program 
 _exit:
