@@ -382,53 +382,47 @@ _MUL:
 	ORR r4, r4, r5			;add leading 1 to mantissa 2
 
 
-	MOV r6, #0				;result of multiplication will be in r6 and r7
-	MOV r7, #0				;r7 extends r6's bits, since the result of 32 bit multiplication takes up to 64 bits
-	MOV r8, #1				;added to r7 in case of r6 carrying out
+	MOV r6, #0				;result of multiplication will be in r6
+	MOV r7, #0				
+	MOV r8, #1				
 	
-	;;multiply		
+	;;multiply
 	
-	MOV r5, r4				; r5 (input 2 mantissa) is counter
+	MOV r5, r4				; r5 (input 2 mantissa)
 	B	MULTIPLY_LOOP		; goto multiply loop 
 	
-MULTIPLY_LOOP: 
+	;mant 1 is in r3
+	;mant 2 is r5
+	;keep ans in r6
 
-	ADDS	r6, r6, r3		;;add and accumulate mantissa 1 in r6, set carry flag if carry out
-	ADDCS	r7,r7, #1		;;conditionally add 1 to r7 if carry out set ( carry out from r6 into r7 )
-	
-	SUB		r5,r5, #1		;; decrement counter 
-	
-	CMP		r5,#0			;;if r5 > 0
-	BGT MULTIPLY_LOOP		;;loop again
-	B OUT_OF_LOOPY
+MULTIPLY_LOOP: 
+	MOV r7, #1
+	AND r7, r7, r5 			;get last bit of second number
+	CMP r7, #1
+	BNE MULT_CONT
+	ADD r6, r6, r3
+	B MULT_CONT
+MULT_CONT:
+	MOV r5, r5, LSR #1
+	CMP r5, #0
+	BEQ OUT_OF_LOOPY
+	MOV r6, r6, LSR #1
+	B MULTIPLY_LOOP
 
 OUT_OF_LOOPY:
 	;;normalize the result										
-	LDR r5, =0x00007FFF		;used to check if more than 15 bits in r7
-	
+	LDR r5, =0x00FFFFFF		;used to check if more than 24 bits in result
 	MOV r8, #1
-	EOR r9,r9,r9
-							;;result of multiplying two 24 bit numbers will have at least 47 bits (32 bits in r6, 15 bits in r7)
-							;;if it has more, it needs to be normalized
-	CMP r7, r5				;;check if mantissa has more than 47 bits
+	MOV r9, #0x800000
+	CMP r6, r5
 	BGT MULT_NORMALIZER
 	B MULT_NORMALIZER_DONE
 
 MULT_NORMALIZER:		
-	AND r9, r8,r7			; save first bit of r7
-	MOV r9, r9, LSL #31		; shift r9 to 32ndth (tm) bit 
-	
-	mov r7, r7, lsr #1		; shift higher mantissa register to right one position
-	mov r6, r6, lsr #1		; shift lower mantissa register to right one position
-	
-	ORR r6, r6, r9			; put shifted out bit from higher mantissa into lower mantissa
-
-	EOR r9,r9,r9
-	MOV r9, #0x800000		; set r9 to 'one', to be added to exponent (exponent is in the middle in ieee)
-	
-	ADD r2, r2,r9			;add 'one' to exponent
-							
-	CMP r7, r5				; if r7 > 15 bits
+	;shift right 1	
+	MOV r6, r6, lsr #1		; shift ansright
+	ADD r2, r2, r9			;add 'one' to exponent
+	CMP r6, r5				; if r6 > 24 bits
 	BGT MULT_NORMALIZER		;do again
 							;else
 	B MULT_NORMALIZER_DONE	;done normalizing
@@ -436,13 +430,8 @@ MULT_NORMALIZER:
 
 MULT_NORMALIZER_DONE:		
 	;; prepare mantissa for final answer
-	MOV r7, r7, LSL #9		;put the 15 most significant mantissa bits in r7 bits 24 - 10
-	MOV r6, r6, LSR #23		;put the 9 least significant mantissa bits in r6 bits 9 - 1 
-	ORR r6, r6, r7			;or mantissa together, store in r6
-
 	LDR r7, =0x7FFFFF 		;remove leading one from mantissa
-	AND r6,r6,r7 			
-							
+	AND r6,r6,r7					
 	B 	MULT_GET_THE_SIGN	;go to next step 
 
 MULT_GET_THE_SIGN:

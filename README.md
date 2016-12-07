@@ -5,4 +5,3 @@
 
 #Hangout
 [Link to Hangout](https://hangouts.google.com/group/KEJbU8TbtYDP8aTQ2)
-
