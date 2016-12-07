@@ -157,7 +157,7 @@ _SUB:
 	LDR r1, =INPUT2_FLOAT
 	LDR r1, [r1] 				;floating input 2
 	CMP r1, #0 					;negate second input if not zero
-	BNE SUB_START
+	BEQ SUB_START
 	 							;negate second input
 	LDR r2, =0x80000000
 	AND r2, r2, r1				;get sign of input 2
@@ -189,6 +189,7 @@ _ADD_SUB:
     MOV r9, #0
     MOV r8, #0
     MOV r7, #0       ;clears registers
+    MOV r3, #0
     MOV r4, #0
     MOV r5, #0
     MOV r6, #0
@@ -286,7 +287,7 @@ GOOD_TO_GO_NEGS:
 	BGT NORMALIZE1
 	MOV r1, #0x00800000 		;check if needs normalization (less than 24 bits)
 	CMP r1, r2
-	BLT NORMALIZE2
+	BGT NORMALIZE2
 	B NORM_GOOD 				;exactly 24 bits, no need to normalize
 
 NORMALIZE1:
@@ -305,7 +306,7 @@ NORMALIZE2:
 	SUB r6, r6, r7 				;adjust exponent (subtract 1)
 
 	CMP r7, r2 					;check if mantissa less than 24 bits
-	BLT NORMALIZE2
+	BGT NORMALIZE2
 	B NORM_GOOD
 
 NORM_GOOD:
@@ -393,7 +394,7 @@ _MUL:
 MULTIPLY_LOOP: 
 
 	ADDS	r6, r6, r3		;;add and accumulate mantissa 1 in r6, set carry flag if carry out
-	ADDCS	r7,r7, r8		;;conditionally add 1 to r7 if carry out set ( carry out from r6 into r7 )
+	ADDCS	r7,r7, #1		;;conditionally add 1 to r7 if carry out set ( carry out from r6 into r7 )
 	
 	SUB		r5,r5, #1		;; decrement counter 
 	
@@ -477,19 +478,19 @@ _BUILT_IN:
 	FMSR s0, r0 			;transfer over to floating point registers
 	FMSR s1, r1
 	
-	FMULS s2, s0, s1 		;multiply
-	FADDS s3, s0, s1 		;add
-	FSUBS s4, s0, s1 		;subtract
+	FADDS s2, s0, s1 		;add
+	FSUBS s3, s0, s1 		;subtract
+	FMULS s4, s0, s1 		;multiply
 	
 	FMRS r2, s2 			;transfer back to regular registers
 	FMRS r3, s3
 	FMRS r4, s4
 
-	LDR r5, =FOP_MUL 		;store in memory
+	LDR r5, =FOP_ADD 		;store in memory
 	STR r2, [r5]
 	LDR r5, =FOP_SUB
 	STR r3, [r5]
-	LDR r5, =FOP_ADD
+	LDR r5, =FOP_MUL
 	STR r4, [r5]
 
 	MOV pc, lr 				;return
