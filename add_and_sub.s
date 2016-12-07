@@ -161,7 +161,7 @@ _SUB:
 	 							;negate second input
 	LDR r2, =0x80000000
 	AND r2, r2, r1				;get sign of input 2
-	LDR r2, =0x7FFFFFFF 			
+	LDR r3, =0x7FFFFFFF 			
 	AND r3, r3, r1 				;mask sign off of input 2
 	MVN r2, r2 					;negate sign of input 2
 	LDR r4, =0x80000000 			
