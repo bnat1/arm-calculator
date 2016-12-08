@@ -1,12 +1,14 @@
 ;file for integrating all code
-;Rommel Trejo Castillo, Tsunsing Leung, Nathaniel Baylon, Krunal Hirpara
+;CMSC411, Russ Cain
+;12/8/2016
+;Authors: Rommel Trejo Castillo, Tsunsing Leung, Nathaniel Baylon, Krunal Hirpara
 
 ;;memory
 .data
 
-	;inputs
-	;enter inputs in dumb format here, in hex
-	INPUT1: .word 0x7FFFFFFF
+	;inputs											; Some common inputs(for example):
+	;enter inputs in dumb format here, in hex 		; 0 = 0x0, 1.0 = 0x00010000, max number = 32767.65535 = 0x7FFFFFFF, +100 = 0x00640000 
+	INPUT1: .word 0x7FFFFFFF 						;		  -1.0 = 0x80010000, min number =-32767.65535 = 0xFFFFFFFF, -100 = 0x80640000
 	INPUT2: .word 0x3FFFFFFF
 
 	;results will be stored in memory, pointed to by these labels
