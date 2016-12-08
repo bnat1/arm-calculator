@@ -2,14 +2,22 @@
 ;CMSC411, Russ Cain
 ;12/8/2016
 ;Authors: Rommel Trejo Castillo, Tsunsing Leung, Nathaniel Baylon, Krunal Hirpara
+;
+;Usage: Enter two inputs in dumb format in the INPUT1 and INPUT2 labels. The results are stored in the result labels, and 
+; 		At the end of execution of the whole program, all of the results are copied from memory into the registers (see _CHECK_ANS subroutine)
 
 ;;memory
 .data
 
-	;inputs											; Some common inputs(for example):
-	;enter inputs in dumb format here, in hex 		; 0 = 0x0, 1.0 = 0x00010000, max number = 32767.65535 = 0x7FFFFFFF, +100 = 0x00640000 
-	INPUT1: .word 0x7FFFFFFF 						;		  -1.0 = 0x80010000, min number =-32767.65535 = 0xFFFFFFFF, -100 = 0x80640000
+	; Some common inputs(for example):
+	; 0 = 0x0, 1.0 = 0x00010000, max number = 32767.65535 = 0x7FFFFFFF, +100 = 0x00640000 
+	;		  -1.0 = 0x80010000, min number =-32767.65535 = 0xFFFFFFFF, -100 = 0x80640000
+	
+	;input labels											
+	;enter inputs in dumb format here, in hex 		
+	INPUT1: .word 0x7FFFFFFF 						
 	INPUT2: .word 0x3FFFFFFF
+
 
 	;results will be stored in memory, pointed to by these labels
 	INPUT1_FLOAT: .word 0   ;result of conversion to float for input 1
